@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import keras.backend as K
 import tensorflow as tf
 import numpy as np
@@ -14,15 +15,48 @@ from scipy.misc import imread
 ## Images
 ##
 
-def get_filenames(lr_path="data/temp/lr/", hr_path="data/temp/hr/"):
-    file_names = [f for f in sorted(os.listdir(lr_path))
+def list_filenames(images_dir, full_path=True):
+    file_names = [f for f in sorted(os.listdir(images_dir))
                   if (f.endswith('.jpeg') or f.endswith('.png') or f.endswith('.jpg'))]
-    X_filenames = [os.path.join(lr_path, f) for f in file_names]
-    Y_filenames = [os.path.join(hr_path, f) for f in file_names]
+    if full_path:
+        file_names = [os.path.join(images_dir, f) for f in file_names]
+    return file_names
+
+def get_filenames(lr_path="data/temp/lr/", hr_path="data/temp/hr/"):
+    X_filenames = list_filenames(lr_path, full_path=True)
+    Y_filenames = list_filenames(hr_path, full_path=True)
     return X_filenames, Y_filenames
 
 def get_images(filenames):
     return np.array([imread(f, mode='YCbCr') for f in filenames])
+
+def get_input_shape(images_dir):
+    filenames = list_filenames(images_dir)
+    x = filenames[0]
+    x = np.array(imread(x))
+    return x.shape
+
+##
+## Iterator
+##
+
+def lr_hr_generator(lr_path, hr_path, mode='YCbCr'):
+    X_filenames, Y_filenames = get_filenames(lr_path, hr_path)
+    while 1:
+        for x_file, y_file in zip(X_filenames, Y_filenames):
+            x = imread(x_file, mode=mode)
+            y = imread(y_file, mode=mode)
+            
+            x = np.reshape(x, (1,) + x.shape)
+            y = np.reshape(y, (1,) + y.shape)
+
+            yield(x, y)
+            
+def steps_for_batch_size(images_dir, batch_size):
+    X, _ = get_filenames(images_dir, images_dir)
+    total = len(X)
+    return max(1, int(total/batch_size))
+
 
 ##
 ## PSNR -- pixel loss
@@ -69,11 +103,11 @@ def experiment(
     logs_dir='results/logs/', 
     weights_dir='results/weights/', 
     scale=4, epochs=100, batch_size=32):
-    # read data
-    X_filenames, Y_filenames = get_filenames(root_dir + 'lr/', root_dir + 'hr/')
-    X = get_images(X_filenames)
-    Y = get_images(Y_filenames)
-    input_shape = X[0].shape
+
+    # input shape
+    lr_path = root_dir + 'lr/'
+    hr_path = root_dir + 'hr/'
+    input_shape = get_input_shape(lr_path)
 
     # timestamp
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -94,11 +128,12 @@ def experiment(
     model.compile(loss=PSNRLoss, optimizer='rmsprop', metrics=[PSNRLoss])
 
     # train
-    _batch_size = min(batch_size, len(X))
-    model.fit(X, Y, batch_size=_batch_size, epochs=epochs, callbacks=[tensorboard, reduce_lr, model_checkpoint])
+    gen = lr_hr_generator(lr_path, hr_path)
+    steps = steps_for_batch_size(lr_path, batch_size)
+    model.fit_generator(gen, steps, epochs=epochs, callbacks=[tensorboard, reduce_lr, model_checkpoint])
 
     # save model
-    model_path = save_path + ("espcnn_%s.h5" % ts)
+    model_path = models_dir + ("espcnn_%s.h5" % ts)
     model.save(model_path)
 
 if __name__ == '__main__':
