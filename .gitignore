@@ -1,6 +1,6 @@
 .DS_Store
 .ipynb_checkpoints/
-.idea
+.idea/
 __pycache__/
 **.pyc
 **.gz
