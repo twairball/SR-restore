@@ -4,6 +4,7 @@ import tensorflow as tf
 import numpy as np
 
 from datetime import datetime
+from keras.optimizers import Adam, RMSprop
 from keras.callbacks import TensorBoard, ModelCheckpoint, ReduceLROnPlateau
 
 from models import create_espcnn_model, create_srcnn_model
@@ -27,8 +28,12 @@ def get_filenames(lr_path="data/temp/lr/", hr_path="data/temp/hr/"):
     Y_filenames = list_filenames(hr_path, full_path=True)
     return X_filenames, Y_filenames
 
-def get_images(filenames):
-    return np.array([imread(f, mode='YCbCr') for f in filenames])
+def load_image(filename, mode="YCbCr"):
+    img = imread(filename, mode=mode)
+    return np.asarray(img, dtype=K.floatx())
+
+def get_images(filenames, mode="YCbCr"):
+    return np.asarray([load_image(f, mode=mode) for f in filenames])
 
 def get_input_shape(images_dir):
     filenames = list_filenames(images_dir)
@@ -44,16 +49,16 @@ def lr_hr_generator(lr_path, hr_path, mode='YCbCr'):
     X_filenames, Y_filenames = get_filenames(lr_path, hr_path)
     while 1:
         for x_file, y_file in zip(X_filenames, Y_filenames):
-            x = imread(x_file, mode=mode)
-            y = imread(y_file, mode=mode)
+            x = load_image(x_file, mode=mode)
+            y = load_image(y_file, mode=mode)
             
             x = np.reshape(x, (1,) + x.shape)
-            y = np.reshape(y, (1,) + y.shape)
+            y = np.reshape(y, (1,) + y.shape)   
 
             yield(x, y)
             
 def steps_for_batch_size(images_dir, batch_size):
-    X, _ = get_filenames(images_dir, images_dir)
+    X = list_filenames(images_dir)
     total = len(X)
     return max(1, int(total/batch_size))
 
@@ -123,9 +128,12 @@ def experiment(
     # callbacks -- learning rate
     reduce_lr = ReduceLROnPlateau(monitor='loss', factor=0.1, patience=5, min_lr=0.0001)
 
+    # Adam, 0.01    
+    opt = Adam(lr=0.01)
+
     # model
     model = create_espcnn_model(input_shape, scale=scale)
-    model.compile(loss=PSNRLoss, optimizer='rmsprop', metrics=[PSNRLoss])
+    model.compile(loss=PSNRLoss, optimizer=opt, metrics=[PSNRLoss])
 
     # train
     gen = lr_hr_generator(lr_path, hr_path)

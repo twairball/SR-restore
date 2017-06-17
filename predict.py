@@ -3,20 +3,21 @@ import numpy as np
 from keras.models import load_model
 
 from models import create_espcnn_model
-from train import get_filenames, get_images
+from train import get_filenames, get_images, list_filenames
 
 from utils import ycbcr2rgb, rgb2ycbcr
 
 from scipy.misc import imsave
 
-lr_path = ''
-output_path = ''
-weights_file = 'results/espcnn_weights_20170613_182006.h5'
+# lr_path = ''
+# output_path = ''
+# weights_file = 'results/espcnn_weights_20170613_182006.h5'
 
 
 def pipeline(input_path, output_path, weights_path, scale=4, batch_size=32):
     # read input images
-    X_filenames, Y_filenames = get_filenames(input_path, output_path)
+    X_filenames = list_filenames(input_path)
+
     X = get_images(X_filenames)
     input_shape = X[0].shape
 
@@ -26,6 +27,10 @@ def pipeline(input_path, output_path, weights_path, scale=4, batch_size=32):
 
     # predict
     preds = model.predict(X, batch_size=batch_size)
+
+    # output filepaths
+    Y_filenames = list_filenames(input_path, full_path=False)
+    Y_filenames = [output_path + f for f in Y_filenames]
 
     # save images
     for index, out_filename in enumerate(Y_filenames):
