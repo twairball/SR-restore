@@ -35,7 +35,7 @@ def pipeline(input_path, output_path, weights_path, scale=4, batch_size=32):
     # save images
     for index, out_filename in enumerate(Y_filenames):
         print("[%d] saving to: %s" % (index, out_filename))
-        out_img = ycbcr2rgb(preds[index])
+        out_img = ycbcr2rgb(preds[index] * 255.)  # rescale from normalized array
         imsave(out_filename, out_img, format='png')
 
 

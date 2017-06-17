@@ -30,7 +30,7 @@ def get_filenames(lr_path="data/temp/lr/", hr_path="data/temp/hr/"):
 
 def load_image(filename, mode="YCbCr"):
     img = imread(filename, mode=mode)
-    return np.asarray(img, dtype=K.floatx())
+    return np.asarray(img, dtype=K.floatx()) / 255. # normalize
 
 def get_images(filenames, mode="YCbCr"):
     return np.asarray([load_image(f, mode=mode) for f in filenames])
