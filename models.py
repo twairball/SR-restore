@@ -9,12 +9,13 @@ from keras import backend as K
 ##
 ## SR CNN
 ##
-def create_srcnn_model(input_shape, scale=3):
-
+def create_srcnn_model(input_shape, scale=4):
     inputs = Input(shape=input_shape)
+    channels = input_shape[-1] # TF channel-last
 
     # 9-5-5 (see paper)
-    x = Convolution2D(64, (9, 9), activation='relu', padding='same', name='level1')(inputs)
+    x = UpSampling2D((scale, scale))(inputs) # upsample
+    x = Convolution2D(64, (9, 9), activation='relu', padding='same', name='level1')(x)
     x = Convolution2D(32, (5, 5), activation='relu', padding='same', name='level2')(x)
     x = Convolution2D(3, (5, 5), activation='relu', padding='same', name='level3')(x)
 
@@ -25,7 +26,7 @@ def create_srcnn_model(input_shape, scale=3):
 ##
 ## Subpixel ESPCN
 ##
-def create_espcnn_model(input_shape, scale=3):
+def create_espcnn_model(input_shape, scale=4):
     inputs = Input(shape=input_shape)
     channels = input_shape[-1] # TF channel-last
 

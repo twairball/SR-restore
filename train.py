@@ -10,6 +10,7 @@ from keras.callbacks import TensorBoard, ModelCheckpoint, ReduceLROnPlateau
 from models import create_espcnn_model, create_srcnn_model
 
 import os
+import errno
 from scipy.misc import imread
 
 ##
@@ -62,20 +63,9 @@ def steps_for_batch_size(images_dir, batch_size):
     total = len(X)
     return max(1, int(total/batch_size))
 
-
 ##
-## PSNR -- pixel loss
+## Loss
 ##
-
-def log10(x):
-    """
-    tensorflowにはlog10がないので自分で定義
-    https://github.com/tensorflow/tensorflow/issues/1666
-    """
-    numerator = tf.log(x)
-    denominator = tf.log(tf.constant(10, dtype=numerator.dtype))
-    return numerator / denominator
-
 
 def PSNRLoss(y_true, y_pred):
     """
@@ -89,69 +79,100 @@ def PSNRLoss(y_true, y_pred):
     Thus we remove that component completely and only compute the remaining MSE component.
     ref: https://github.com/titu1994/Image-Super-Resolution/blob/master/models.py
     """
-    # tensorflowオブジェクトを返さないといけないので以下ではNG
-    # return -10. * np.log10(K.mean(K.square(y_pred - y_true)))
+    def log10(x):
+        return K.log(x) / K.log(K.constant(10, dtype=K.floatx()))
+
     return -10. * log10(K.mean(K.square(y_pred - y_true)))
 
+##
+## util
+##
 
-def psnr(y_true, y_pred):
-    assert y_true.shape == y_pred.shape, "Cannot calculate PSNR. Input shapes not same." \
-                                         " y_true shape = %s, y_pred shape = %s" % (str(y_true.shape),
-                                                                                   str(y_pred.shape))
+def mkdir_p(path):
+    try:
+        os.makedirs(path)
+    except OSError as exc:  # Python >2.5
+        if exc.errno == errno.EEXIST and os.path.isdir(path):
+            pass
+        else:
+            raise
+ 
+class Pipeline():
+    def __init__(self, input_root_dir, results_root_dir, network='espcnn'):
+        self.root_dir = input_root_dir
+        self.results_root_dir = results_root_dir
+        self.network = network
 
-    return -10. * np.log10(np.mean(np.square(y_pred - y_true)))
+        self.results_dir = self._get_and_prepare_results_dir()
 
+    def _get_and_prepare_results_dir(self):
+        """
+            results_dir
+                /model.h5
+                /weights.h5
+                /logs/
+                    ...
+        """
+        # timestamp
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        model_name = "%s_%s" % (self.network, ts)
 
-def experiment(
-    root_dir='data/temp/', 
-    models_dir='results/',
-    logs_dir='results/logs/', 
-    weights_dir='results/weights/', 
-    scale=4, epochs=100, batch_size=32):
+        # make output dirs
+        results_dir = "%s/%s/" % (self.results_root_dir, model_name)
+        mkdir_p(results_dir)
+        mkdir_p(results_dir + 'logs/')
 
-    # input shape
-    lr_path = root_dir + 'lr/'
-    hr_path = root_dir + 'hr/'
-    input_shape = get_input_shape(lr_path)
+        print("\n\n[TRAIN]    saving results to %s\n" % results_dir)
+        return results_dir
 
-    # timestamp
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    def get_callbacks(self):
+        # callbacks -- tensorboard
+        log_dir = self.results_dir + 'logs/'
+        tensorboard = TensorBoard(log_dir=log_dir)
 
-    # callbacks -- tensorboard
-    log_dir = logs_dir + ts
-    tensorboard = TensorBoard(log_dir=log_dir)
+        # callbacks -- model weights
+        weights_path = self.results_dir + 'weights.h5' 
+        model_checkpoint = ModelCheckpoint(monitor='loss', filepath=weights_path, save_best_only=True)
 
-    # callbacks -- model weights
-    weights_path = weights_dir + ("espcnn_weights_%s.h5" % ts)
-    model_checkpoint = ModelCheckpoint(monitor='loss', filepath=weights_path, save_best_only=True)
+        # callbacks -- learning rate
+        reduce_lr = ReduceLROnPlateau(monitor='loss', factor=0.1, patience=5, min_lr=1e-5)
+        return [tensorboard, model_checkpoint, reduce_lr]
 
-    # callbacks -- learning rate
-    reduce_lr = ReduceLROnPlateau(monitor='loss', factor=0.1, patience=5, min_lr=0.0001)
+    def run(self, scale=4, epochs=100, batch_size=32, save=True):  
+        # input shape
+        lr_path = self.root_dir + 'lr/'
+        hr_path = self.root_dir + 'hr/'
+        input_shape = get_input_shape(lr_path)
 
-    # Adam, 0.01    
-    opt = Adam(lr=0.01)
+        # model
+        if (self.network == 'srcnn'):
+            model = create_srcnn_model(input_shape, scale=scale)
+            model.compile(loss='mse', optimizer=Adam(lr=1e-3), metrics=[PSNRLoss])            
+        else:
+            model = create_espcnn_model(input_shape, scale=scale)
+            model.compile(loss='mse', optimizer=Adam(lr=1e-3), metrics=[PSNRLoss])
 
-    # model
-    model = create_espcnn_model(input_shape, scale=scale)
-    model.compile(loss=PSNRLoss, optimizer=opt, metrics=[PSNRLoss])
+        # callbacks
+        callbacks = self.get_callbacks()
 
-    # train
-    gen = lr_hr_generator(lr_path, hr_path)
-    steps = steps_for_batch_size(lr_path, batch_size)
-    model.fit_generator(gen, steps, epochs=epochs, callbacks=[tensorboard, reduce_lr, model_checkpoint])
+        # train
+        gen = lr_hr_generator(lr_path, hr_path)
+        steps = steps_for_batch_size(lr_path, batch_size)
+        model.fit_generator(gen, steps, epochs=epochs, callbacks=callbacks)
 
-    # save model
-    model_path = models_dir + ("espcnn_%s.h5" % ts)
-    model.save(model_path)
+        # save
+        if (save):
+            model_path = self.results_dir + "model.h5"
+            model.save(model_path)
+
 
 if __name__ == '__main__':
 
     import argparse
     parser = argparse.ArgumentParser(description="Train SR model.")
     parser.add_argument("image_path", type=str, help="Path to input images, expects sub-directories /path/lr/ and /path/hr/.")
-    parser.add_argument("--logs", type=str, default='results/logs/', help="Logs output path.")
-    parser.add_argument("--weights", type=str, default='results/weights/', help="Weights output path.")
-    parser.add_argument("--save", type=str, default='results/', help="Model save path.")
+    parser.add_argument("--results_path", type=str, default="results/", help="Results base dir, will create subdirectories e.g. /results/model_timestamp/")
+    parser.add_argument("--network", type=str, default="espcnn", help="Network architecture, [srcnn|espcnn]")
     parser.add_argument("--scale", type=int, default=4, help="Upscale factor. Default=4.")
     parser.add_argument("--epochs", type=int, default=100, help="Epochs. Default=100")
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size. Default=32")
@@ -159,18 +180,12 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     image_path = args.image_path
-    models_path = args.save
-    logs_path = args.logs
-    weights_path = args.weights
+    results_path = args.results_path
+    network = args.network
     scale = args.scale
     epochs = args.epochs
     batch_size = args.batch_size
 
-    # run experiment
-    experiment(image_path,
-               models_dir=models_path,
-               logs_dir=logs_path,
-               weights_dir=weights_path,
-               scale=scale,
-               epochs=epochs,
-               batch_size=batch_size)
+    # training pipeline
+    p = Pipeline(image_path, results_path, network=network)
+    p.run(scale=scale, epochs=epochs, batch_size=batch_size)
