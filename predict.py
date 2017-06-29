@@ -9,7 +9,7 @@ from utils import ycbcr2rgb, rgb2ycbcr
 
 from scipy.misc import imsave
 
-def pipeline(input_path, output_path, weights_path, network='espcnn', scale=4, batch_size=32):
+def pipeline(input_path, output_path, weights_path, network='espcnn', scale=4, batch_size=32, limit=None):
     # read input images
     X_filenames = list_filenames(input_path)
 
@@ -31,6 +31,10 @@ def pipeline(input_path, output_path, weights_path, network='espcnn', scale=4, b
     Y_filenames = list_filenames(input_path, full_path=False)
     Y_filenames = [output_path + f for f in Y_filenames]
 
+    # limit predictions
+    if limit:
+        Y_filenames = Y_filenames[:limit]
+
     # save images
     for index, out_filename in enumerate(Y_filenames):
         print("[%d] saving to: %s" % (index, out_filename))
@@ -48,6 +52,7 @@ if __name__ == '__main__':
     parser.add_argument("--output", type=str, help="Model save path.")
     parser.add_argument("--scale", type=int, default=4, help="Upscale factor. Default=4.")
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size. Default=32")
+    parser.add_argument("--limit", type=int, help="Limit prediction to first N files.")
 
     args = parser.parse_args()
 
@@ -57,11 +62,12 @@ if __name__ == '__main__':
     weights_path = args.weights
     scale = args.scale
     batch_size = args.batch_size
-
+    limit = args.limit
 
     pipeline(input_path,
             network=network,
             output_path=output_path,
             weights_path=weights_path,
             scale=scale,
-            batch_size=batch_size)
+            batch_size=batch_size,
+            limit=limit)

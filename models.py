@@ -6,6 +6,8 @@ from keras.models import Model
 from keras import backend as K
 
 
+from subpixel import SubpixelConv2D
+
 ##
 ## SR CNN
 ##
@@ -31,23 +33,12 @@ def create_espcnn_model(input_shape, scale=4):
     channels = input_shape[-1] # TF channel-last
 
     # 5-3-3 (see paper)
-    x = Convolution2D(64, (5, 5), activation='tanh', padding='same', name='level1')(inputs)
-    x = Convolution2D(32, (3, 3), activation='tanh', padding='same', name='level2')(x)
-    x = Convolution2D(channels * scale ** 2, (3, 3), activation='tanh', padding='same', name='level3')(x)
+    x = Convolution2D(64, (5, 5), activation='relu', padding='same', name='level1')(inputs)
+    x = Convolution2D(32, (3, 3), activation='relu', padding='same', name='level2')(x)
+    x = Convolution2D(channels * scale ** 2, (3, 3), activation='relu', padding='same', name='level3')(x)
 
-    # upsample using depth_to_space
-    def subpixel_shape(input_shape):
-        dims = [input_shape[0],
-                input_shape[1] * scale,
-                input_shape[2] * scale,
-                int(input_shape[3] / (scale ** 2))]
-        output_shape = tuple(dims)
-        return output_shape
-
-    def subpixel(x):
-        return tf.depth_to_space(x, scale)
-
-    out = Lambda(subpixel, output_shape=subpixel_shape, name='subpixel')(x)
+    # upsample
+    out = SubpixelConv2D(input_shape, scale=scale)(x)
 
     m = Model(inputs=inputs, outputs=out)
     return m

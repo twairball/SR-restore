@@ -1,4 +1,5 @@
 import numpy as np
+import os, errno
 
 ##
 ## color space 
@@ -23,3 +24,17 @@ def preprocess_vgg(input):
     rn_mean = np.array([123.68, 116.779, 103.939], dtype=np.float32)
     preproc = lambda x: (x - rn_mean)[:, :, :, ::-1]
     return preproc
+
+##
+## utils
+##
+
+def mkdir_p(path):
+    try:
+        os.makedirs(path)
+    except OSError as exc:  # Python >2.5
+        if exc.errno == errno.EEXIST and os.path.isdir(path):
+            pass
+        else:
+            raise
+ 

@@ -1,17 +1,20 @@
 # -*- coding: utf-8 -*-
-import keras.backend as K
+import os
+import errno
+from scipy.misc import imread
+from datetime import datetime
+
 import tensorflow as tf
 import numpy as np
 
-from datetime import datetime
+import keras.backend as K
 from keras.optimizers import Adam, RMSprop
 from keras.callbacks import TensorBoard, ModelCheckpoint, ReduceLROnPlateau
 
 from models import create_espcnn_model, create_srcnn_model
+from utils import mkdir_p
 
-import os
-import errno
-from scipy.misc import imread
+import timeit
 
 ##
 ## Images
@@ -31,17 +34,20 @@ def get_filenames(lr_path="data/temp/lr/", hr_path="data/temp/hr/"):
 
 def load_image(filename, mode="YCbCr"):
     img = imread(filename, mode=mode)
-    return np.asarray(img, dtype=K.floatx()) / 255. # normalize
+    return np.asarray(img, dtype=K.floatx())
 
 def get_images(filenames, mode="YCbCr"):
     return np.asarray([load_image(f, mode=mode) for f in filenames])
 
-def get_input_shape(images_dir):
+def get_image_shape(images_dir):
     filenames = list_filenames(images_dir)
     x = filenames[0]
     x = np.array(imread(x))
     return x.shape
 
+def get_count(images_dir):
+    filenames = list_filenames(images_dir)
+    return len(filenames)
 ##
 ## Iterator
 ##
@@ -74,29 +80,13 @@ def PSNRLoss(y_true, y_pred):
     It can be calculated as
     PSNR = 20 * log10(MAXp) - 10 * log10(MSE)
 
-    When providing an unscaled input, MAXp = 255. Therefore 20 * log10(255)== 48.1308036087.
-    However, since we are scaling our input, MAXp = 1. Therefore 20 * log10(1) = 0.
-    Thus we remove that component completely and only compute the remaining MSE component.
-    ref: https://github.com/titu1994/Image-Super-Resolution/blob/master/models.py
+    For images, MAXp = 255, so 1st term is 20 * log(255) == 48.1308036087.
     """
     def log10(x):
         return K.log(x) / K.log(K.constant(10, dtype=K.floatx()))
 
-    return -10. * log10(K.mean(K.square(y_pred - y_true)))
+    return 48.1308036087 + -10. * log10(K.mean(K.square(y_pred - y_true)))
 
-##
-## util
-##
-
-def mkdir_p(path):
-    try:
-        os.makedirs(path)
-    except OSError as exc:  # Python >2.5
-        if exc.errno == errno.EEXIST and os.path.isdir(path):
-            pass
-        else:
-            raise
- 
 class Pipeline():
     def __init__(self, input_root_dir, results_root_dir, network='espcnn'):
         self.root_dir = input_root_dir
@@ -142,7 +132,11 @@ class Pipeline():
         # input shape
         lr_path = self.root_dir + 'lr/'
         hr_path = self.root_dir + 'hr/'
-        input_shape = get_input_shape(lr_path)
+        input_shape = get_image_shape(lr_path)
+        output_shape = get_image_shape(hr_path)
+        image_count = get_count(lr_path)
+
+        print("[TRAIN] LR %s ==> HR %s. (%s images)" % (input_shape, output_shape, image_count))
 
         # model
         if (self.network == 'srcnn'):
@@ -188,4 +182,7 @@ if __name__ == '__main__':
 
     # training pipeline
     p = Pipeline(image_path, results_path, network=network)
+
+    start_time = timeit.default_timer()
     p.run(scale=scale, epochs=epochs, batch_size=batch_size)
+    print(timeit.default_timer() - start_time)
