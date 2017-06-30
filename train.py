@@ -11,7 +11,7 @@ import keras.backend as K
 from keras.optimizers import Adam, RMSprop
 from keras.callbacks import TensorBoard, ModelCheckpoint, ReduceLROnPlateau
 
-from models import create_espcnn_model, create_srcnn_model
+from models import create_espcnn_model, create_srcnn_model, create_resnet_up_model, create_espcnn_bn_model
 from utils import mkdir_p
 
 import timeit
@@ -141,10 +141,14 @@ class Pipeline():
         # model
         if (self.network == 'srcnn'):
             model = create_srcnn_model(input_shape, scale=scale)
-            model.compile(loss='mse', optimizer=Adam(lr=1e-3), metrics=[PSNRLoss])            
+        elif (self.network == 'resnet_up'):
+            model = create_resnet_up_model(input_shape, scale=scale)
+        elif (self.network == 'espcnn_bn'):
+            model = create_espcnn_bn_model(input_shape, scale=scale)
         else:
             model = create_espcnn_model(input_shape, scale=scale)
-            model.compile(loss='mse', optimizer=Adam(lr=1e-3), metrics=[PSNRLoss])
+
+        model.compile(loss='mse', optimizer=Adam(lr=1e-3), metrics=[PSNRLoss])
 
         # callbacks
         callbacks = self.get_callbacks()
@@ -166,7 +170,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Train SR model.")
     parser.add_argument("image_path", type=str, help="Path to input images, expects sub-directories /path/lr/ and /path/hr/.")
     parser.add_argument("--results_path", type=str, default="results/", help="Results base dir, will create subdirectories e.g. /results/model_timestamp/")
-    parser.add_argument("--network", type=str, default="espcnn", help="Network architecture, [srcnn|espcnn]")
+    parser.add_argument("--network", type=str, default="espcnn", help="Network architecture, [srcnn|espcnn|espcnn_bn|resnet_up]. Default=espcnn")
     parser.add_argument("--scale", type=int, default=4, help="Upscale factor. Default=4.")
     parser.add_argument("--epochs", type=int, default=100, help="Epochs. Default=100")
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size. Default=32")

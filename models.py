@@ -8,6 +8,8 @@ from keras import backend as K
 
 from subpixel import SubpixelConv2D
 
+
+
 ##
 ## SR CNN
 ##
@@ -43,23 +45,62 @@ def create_espcnn_model(input_shape, scale=4):
     m = Model(inputs=inputs, outputs=out)
     return m
 
+def create_espcnn_bn_model(input_shape, scale=4):
+    inputs = Input(shape=input_shape)
+    channels = input_shape[-1] # TF channel-last
+
+    # 5-3-3 (see paper)
+    x = Convolution2D(64, (5, 5), padding='same', name='level1')(inputs)
+    x = BatchNormalization(axis=3)(x)
+    x = Activation('relu')(x)
+    x = Convolution2D(32, (3, 3), padding='same', name='level2')(x)
+    x = BatchNormalization(axis=3)(x)
+    x = Activation('relu')(x)
+    x = Convolution2D(channels * scale ** 2, (3, 3), padding='same', name='level3')(x)
+
+    # upsample
+    out = SubpixelConv2D(input_shape, scale=scale)(x)
+
+    m = Model(inputs=inputs, outputs=out)
+    return m
+
+##
+## SR filter blocks
+##
+def conv_block(inputs, filters, kernel_size, strides=(1,1), padding="same", activation='relu'):
+    x = Convolution2D(filters, kernel_size, strides=strides, padding=padding)(inputs)
+    x = BatchNormalization()(x)
+    if activation:
+        x = Activation(activation)(x)
+    return x
+
+def up_block(inputs, filters, kernel_size, strides=(1,1), scale=2, padding="same", activation="relu"):
+    size = (scale,scale)
+    x = UpSampling2D(size)(inputs)
+    x = Convolution2D(filters, kernel_size, strides=strides, padding=padding)(x)
+    x = BatchNormalization()(x)
+    x = Activation(activation)(x)
+    return x
+
+def res_block(inputs, filters=64):
+    x = conv_block(inputs, filters, (3,3))
+    x = conv_block(x, filters, (3,3), activation=False)
+    return merge([x, inputs], mode='sum')
 
 
 ##
-## Perceptive loss - SR blocks
+## Resnet batchnorm w/ NN upsampling
 ##
-def conv_block(x, filters, size, stride=(2,2), mode='same', act=True):
-    x = Convolution2D(filters, size, size, subsample=stride, border_mode=mode)(x)
-    x = BatchNormalization(mode=2)(x)
-    return Activation('relu')(x) if act else x
 
-def res_block(ip, nf=64):
-    x = conv_block(ip, nf, 3, (1,1))
-    x = conv_block(x, nf, 3, (1,1), act=False)
-    return merge([x, ip], mode='sum')
+def create_resnet_up_model(input_shape, scale=4):
+    inputs = Input(shape=input_shape)
+    x = conv_block(inputs, 64, (9,9))
+    for i in range(4): x = res_block(x)
+    x = up_block(x, 64, (3, 3), scale=scale / 2)
+    x = up_block(x, 64, (3, 3), scale=scale / 2)
+    out = Convolution2D(3, (9,9), activation='relu', padding='same')(x)
 
-def up_block(x, filters, size):
-    x = UpSampling2D()(x)
-    x = Convolution2D(filters, size, size, border_mode='same')(x)
-    x = BatchNormalization(mode=2)(x)
-    return Activation('relu')(x)
+    m = Model(inputs=inputs, outputs=out)
+    return m
+
+
