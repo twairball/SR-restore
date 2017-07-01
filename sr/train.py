@@ -1,20 +1,16 @@
 # -*- coding: utf-8 -*-
 import os
-import errno
-from scipy.misc import imread
 from datetime import datetime
 
-import tensorflow as tf
-import numpy as np
-
 import keras.backend as K
-from keras.optimizers import Adam, RMSprop
+import numpy as np
 from keras.callbacks import TensorBoard, ModelCheckpoint, ReduceLROnPlateau
+from keras.optimizers import Adam
+from scipy.misc import imread
 
-from models import create_espcnn_model, create_srcnn_model, create_resnet_up_model, create_espcnn_bn_model
-from utils import mkdir_p
+from sr.models import create_espcnn_model, create_srcnn_model, create_resnet_up_model, create_espcnn_bn_model
+from sr.utils import mkdir_p
 
-import timeit
 
 ##
 ## Images
@@ -48,22 +44,26 @@ def get_image_shape(images_dir):
 def get_count(images_dir):
     filenames = list_filenames(images_dir)
     return len(filenames)
+
 ##
 ## Iterator
 ##
 
 def lr_hr_generator(lr_path, hr_path, mode='YCbCr'):
-    X_filenames, Y_filenames = get_filenames(lr_path, hr_path)
+    return image_pair_generator(lr_path, hr_path, mode=mode)
+
+def image_pair_generator(x_path, y_path, mode='RGB'):
+    X_filenames, Y_filenames = get_filenames(x_path, y_path)
     while 1:
         for x_file, y_file in zip(X_filenames, Y_filenames):
             x = load_image(x_file, mode=mode)
             y = load_image(y_file, mode=mode)
-            
-            x = np.reshape(x, (1,) + x.shape)
-            y = np.reshape(y, (1,) + y.shape)   
 
-            yield(x, y)
-            
+            x = np.reshape(x, (1,) + x.shape)
+            y = np.reshape(y, (1,) + y.shape)
+
+            yield (x, y)
+
 def steps_for_batch_size(images_dir, batch_size):
     X = list_filenames(images_dir)
     total = len(X)
@@ -95,6 +95,12 @@ class Pipeline():
 
         self.results_dir = self._get_and_prepare_results_dir()
 
+    def _model_name(self):
+        # timestamp
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        model_name = "%s_%s" % (self.network, ts)
+        return model_name
+
     def _get_and_prepare_results_dir(self):
         """
             results_dir
@@ -103,9 +109,7 @@ class Pipeline():
                 /logs/
                     ...
         """
-        # timestamp
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        model_name = "%s_%s" % (self.network, ts)
+        model_name = self._model_name()
 
         # make output dirs
         results_dir = "%s/%s/" % (self.results_root_dir, model_name)
@@ -167,9 +171,10 @@ class Pipeline():
 if __name__ == '__main__':
 
     import argparse
+    import timeit
     parser = argparse.ArgumentParser(description="Train SR model.")
     parser.add_argument("image_path", type=str, help="Path to input images, expects sub-directories /path/lr/ and /path/hr/.")
-    parser.add_argument("--results_path", type=str, default="results/", help="Results base dir, will create subdirectories e.g. /results/model_timestamp/")
+    parser.add_argument("--results", type=str, default="results/sr/", help="Results base dir, will create subdirectories e.g. /results/model_timestamp/")
     parser.add_argument("--network", type=str, default="espcnn", help="Network architecture, [srcnn|espcnn|espcnn_bn|resnet_up]. Default=espcnn")
     parser.add_argument("--scale", type=int, default=4, help="Upscale factor. Default=4.")
     parser.add_argument("--epochs", type=int, default=100, help="Epochs. Default=100")
@@ -178,7 +183,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     image_path = args.image_path
-    results_path = args.results_path
+    results_path = args.results
     network = args.network
     scale = args.scale
     epochs = args.epochs
@@ -189,4 +194,5 @@ if __name__ == '__main__':
 
     start_time = timeit.default_timer()
     p.run(scale=scale, epochs=epochs, batch_size=batch_size)
-    print(timeit.default_timer() - start_time)
+    duration = timeit.default_timer() - start_time
+    print("[SR Train] time taken: %s" % duration)

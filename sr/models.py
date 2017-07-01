@@ -1,13 +1,7 @@
-import numpy as np
-import tensorflow as tf
-
-from keras.layers import Convolution2D, BatchNormalization, Activation, merge, UpSampling2D, Lambda, Input
+from keras.layers import Convolution2D, BatchNormalization, Activation, merge, UpSampling2D, Input
 from keras.models import Model
-from keras import backend as K
 
-
-from subpixel import SubpixelConv2D
-
+from sr.subpixel import SubpixelConv2D
 
 
 ##
@@ -15,7 +9,6 @@ from subpixel import SubpixelConv2D
 ##
 def create_srcnn_model(input_shape, scale=4):
     inputs = Input(shape=input_shape)
-    channels = input_shape[-1] # TF channel-last
 
     # 9-5-5 (see paper)
     x = UpSampling2D((scale, scale))(inputs) # upsample
@@ -51,10 +44,10 @@ def create_espcnn_bn_model(input_shape, scale=4):
 
     # 5-3-3 (see paper)
     x = Convolution2D(64, (5, 5), padding='same', name='level1')(inputs)
-    x = BatchNormalization(axis=3)(x)
+    x = BatchNormalization()(x)
     x = Activation('relu')(x)
     x = Convolution2D(32, (3, 3), padding='same', name='level2')(x)
-    x = BatchNormalization(axis=3)(x)
+    x = BatchNormalization()(x)
     x = Activation('relu')(x)
     x = Convolution2D(channels * scale ** 2, (3, 3), padding='same', name='level3')(x)
 
@@ -102,5 +95,3 @@ def create_resnet_up_model(input_shape, scale=4):
 
     m = Model(inputs=inputs, outputs=out)
     return m
-
-
