@@ -33,3 +33,13 @@ def restore_cnn_bn_model(input_shape):
 
     m = Model(inputs=inputs, outputs=x)
     return m
+
+
+def restore_resnet_model(input_shape):
+    inputs = Input(shape=input_shape)
+    x = conv_block(inputs, 64, (9,9))
+    for i in range(4): x = res_block(x)
+    x = Convolution2D(3, (9,9), activation='relu', padding='same')(x)
+
+    m = Model(inputs=inputs, outputs=x)
+    return m

@@ -84,4 +84,6 @@ celebA: (link)
 
 ## References
 
-    TODO
+- Image Super Resolution (link)
+- Perceptual loss (link)
+- Efficient Real time convolution (link)
